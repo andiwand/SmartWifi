@@ -5,12 +5,13 @@ import java.util.LinkedList;
 import java.util.List;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.net.wifi.ScanResult;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Menu;
@@ -26,44 +27,27 @@ public class MainActivity extends Activity {
 
 	public static final String TAG = "SmartWifi";
 
-	private static class WifiData {
-		WifiConfiguration configuration;
-		ScanResult lastScan;
+	private WifiManager wifiManager;
+	private final WifiSelector wifiSelector;
 
-		@Override
-		public String toString() {
-			return configuration.toString() + "; " + lastScan.toString();
-		}
-	}
-
-	private static String parseSsid(String ssid) {
-		return ssid.substring(1, ssid.length() - 1);
-	}
-
-	private static List<WifiData> merge(List<WifiConfiguration> configurations,
-			List<ScanResult> scans) {
-		List<WifiData> result = new LinkedList<WifiData>();
-
-		for (WifiConfiguration configuration : configurations) {
-			String ssid = parseSsid(configuration.SSID);
-			for (ScanResult scan : scans) {
-				if (scan.BSSID.equals(configuration.BSSID)
-						|| ssid.equals(scan.SSID)) {
-					WifiData data = new WifiData();
-					data.configuration = configuration;
-					data.lastScan = scan;
-					result.add(data);
-				}
-			}
-		}
-
-		return result;
+	public MainActivity() {
+		this.wifiSelector = new WifiSelector();
 	}
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+
+		wifiManager = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
+		wifiSelector.init(wifiManager);
+
+		registerReceiver(new BroadcastReceiver() {
+			@Override
+			public void onReceive(Context c, Intent intent) {
+				wifiSelector.reportScan(wifiManager.getScanResults());
+			}
+		}, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
 
 		ListView listView = (ListView) findViewById(R.id.listView1);
 		List<String> networks = new LinkedList<String>();
@@ -73,39 +57,16 @@ public class MainActivity extends Activity {
 		listView.setAdapter(adapter);
 		registerForContextMenu(listView);
 
-		WifiManager wifiManager = (WifiManager) this
-				.getSystemService(Context.WIFI_SERVICE);
-
 		List<WifiConfiguration> configurations = wifiManager
 				.getConfiguredNetworks();
-		List<ScanResult> scans = wifiManager.getScanResults();
-		List<WifiData> data = merge(configurations, scans);
 
 		for (WifiConfiguration configuration : configurations) {
-			String ssid = parseSsid(configuration.SSID);
+			String ssid = WifiConfigurationUtil.getSsid(configuration);
 			networks.add(ssid);
 		}
 		Collections.sort(networks);
 
 		adapter.notifyDataSetChanged();
-
-		WifiData best = null;
-		for (WifiData d : data) {
-			if ((best == null) || (d.lastScan.level > best.lastScan.level)) {
-				best = d;
-			}
-		}
-
-		Log.d(TAG, data.toString());
-
-		if (best == null) {
-			return;
-		}
-
-		Log.d(TAG, best.toString());
-
-		wifiManager.disconnect();
-		wifiManager.enableNetwork(best.configuration.networkId, true);
 	}
 
 	@Override
