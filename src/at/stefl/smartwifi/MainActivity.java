@@ -5,10 +5,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 import android.app.Activity;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
@@ -28,26 +25,14 @@ public class MainActivity extends Activity {
 	public static final String TAG = "SmartWifi";
 
 	private WifiManager wifiManager;
-	private final WifiSelector wifiSelector;
 
 	public MainActivity() {
-		this.wifiSelector = new WifiSelector();
 	}
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
-
-		wifiManager = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
-		wifiSelector.init(wifiManager);
-
-		registerReceiver(new BroadcastReceiver() {
-			@Override
-			public void onReceive(Context c, Intent intent) {
-				wifiSelector.reportScan(wifiManager.getScanResults());
-			}
-		}, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
 
 		ListView listView = (ListView) findViewById(R.id.listView1);
 		List<String> networks = new LinkedList<String>();
@@ -67,6 +52,8 @@ public class MainActivity extends Activity {
 		Collections.sort(networks);
 
 		adapter.notifyDataSetChanged();
+		
+		startService(new Intent(this, ScanService.class));
 	}
 
 	@Override
