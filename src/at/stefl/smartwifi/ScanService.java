@@ -27,7 +27,6 @@ public class ScanService extends Service {
 		super.onCreate();
 
 		wifiManager = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
-		wifiSelector.init(wifiManager);
 
 		registerReceiver(new BroadcastReceiver() {
 			@Override
