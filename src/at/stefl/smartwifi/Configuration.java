@@ -3,10 +3,46 @@ package at.stefl.smartwifi;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
+import android.content.Context;
+import android.content.SharedPreferences;
+
 public class Configuration {
+
+	private static final String PREFERENCES_NAME = "SmartWifi";
+
+	private static String groupString(Set<String> group) {
+		StringBuilder builder = new StringBuilder();
+
+		Iterator<String> i = group.iterator();
+		builder.append(i.next());
+		while (i.hasNext()) {
+			builder.append(",");
+			builder.append(i.next());
+		}
+
+		return builder.toString();
+	}
+
+	public static Configuration load(Context context) {
+		Configuration configuration = new Configuration();
+
+		SharedPreferences prefs = context.getSharedPreferences(
+				PREFERENCES_NAME, Context.MODE_PRIVATE);
+		Set<String> groups = prefs.getStringSet("groups", null);
+
+		for (String group : groups) {
+			String[] members = group.split(",");
+			for (int i = 0; i < members.length; i++) {
+				configuration.group(members[i], members[0]);
+			}
+		}
+
+		return configuration;
+	}
 
 	private final Map<String, Set<String>> ssidToGroup;
 	private final Set<Set<String>> groups;
@@ -62,4 +98,15 @@ public class Configuration {
 		}
 	}
 
+	public void save(Context context, Configuration configuration) {
+		SharedPreferences.Editor editor = context.getSharedPreferences(
+				PREFERENCES_NAME, Context.MODE_PRIVATE).edit();
+		Set<String> groups = new HashSet<String>();
+		for (Set<String> group : this.groups) {
+			String groupString = groupString(group);
+			groups.add(groupString);
+		}
+		editor.putStringSet("groups", groups);
+		editor.commit();
+	}
 }

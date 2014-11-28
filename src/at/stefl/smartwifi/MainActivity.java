@@ -40,7 +40,6 @@ public class MainActivity extends Activity {
 		setContentView(R.layout.activity_main);
 
 		wifiManager = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
-		wifiSelector.init(wifiManager);
 
 		registerReceiver(new BroadcastReceiver() {
 			@Override

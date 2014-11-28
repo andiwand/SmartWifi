@@ -20,8 +20,6 @@ public class WifiSelector {
 		long timestamp;
 	}
 
-	private WifiManager wifiManager;
-
 	// TODO: use scan count?
 	private double scanCacheTime;
 
@@ -34,10 +32,6 @@ public class WifiSelector {
 		this.lastScans = new LinkedList<Long>();
 		this.lastBssidScans = new HashMap<String, Deque<ScanData>>();
 		this.bssidToSsids = new HashMap<String, Set<String>>();
-	}
-
-	public void init(WifiManager wifiManager) {
-		this.wifiManager = wifiManager;
 	}
 
 	private void addScan(ScanResult scan) {
