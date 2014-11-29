@@ -34,6 +34,8 @@ public class MainActivity extends Activity {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 
+		this.wifiManager = (WifiManager) getSystemService(WIFI_SERVICE);
+
 		ListView listView = (ListView) findViewById(R.id.listView1);
 		List<String> networks = new LinkedList<String>();
 		ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
@@ -52,7 +54,7 @@ public class MainActivity extends Activity {
 		Collections.sort(networks);
 
 		adapter.notifyDataSetChanged();
-		
+
 		startService(new Intent(this, ScanService.class));
 	}
 

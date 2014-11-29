@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import android.content.Context;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 
@@ -20,18 +21,31 @@ public class WifiSelector {
 		long timestamp;
 	}
 
+	private Configuration configuration;
+
 	// TODO: use scan count?
 	private double scanCacheTime;
 
 	private final Deque<Long> lastScans;
 	private final Map<String, Deque<ScanData>> lastBssidScans;
 	// TODO: free memory
-	private final Map<String, Set<String>> bssidToSsids;
+	private final Map<String, Set<String>> ssidToBssids;
+	private final Map<String, String> bssidToSsids;
+
+	private WifiManager wifiManager;
 
 	public WifiSelector() {
 		this.lastScans = new LinkedList<Long>();
 		this.lastBssidScans = new HashMap<String, Deque<ScanData>>();
-		this.bssidToSsids = new HashMap<String, Set<String>>();
+		this.ssidToBssids = new HashMap<String, Set<String>>();
+		this.bssidToSsids = new HashMap<String, String>();
+	}
+
+	public void init(Context context) {
+		this.wifiManager = (WifiManager) context
+				.getSystemService(Context.WIFI_SERVICE);
+
+		this.configuration = Configuration.load(context);
 	}
 
 	private void addScan(ScanResult scan) {
@@ -49,13 +63,13 @@ public class WifiSelector {
 		scanData.level = scan.level;
 		scans.add(scanData);
 
-		Set<String> bssids = bssidToSsids.get(scan.SSID);
+		Set<String> bssids = ssidToBssids.get(scan.SSID);
 		if (bssids == null) {
 			bssids = new HashSet<String>();
-			bssidToSsids.put(scan.SSID, bssids);
+			ssidToBssids.put(scan.SSID, bssids);
 		}
-
 		bssids.add(scan.BSSID);
+		bssidToSsids.put(scan.BSSID, scan.SSID);
 	}
 
 	private void filterScans() {
@@ -89,6 +103,7 @@ public class WifiSelector {
 		}
 	}
 
+	// TODO: dont calculate all
 	private Map<String, Double> getCurrentScores() {
 		Map<String, Double> result = new HashMap<String, Double>();
 
@@ -117,7 +132,28 @@ public class WifiSelector {
 	}
 
 	public void select() {
+		String currentSsid = wifiManager.getConnectionInfo().getSSID();
+		String currentBssid = wifiManager.getConnectionInfo().getBSSID();
+		Set<String> members = configuration.getMembers(currentSsid);
+		if (members == null)
+			return;
+		Map<String, Double> currentScores = getCurrentScores();
 
+		String bestBssid = null;
+		double bestScore = 0;
+		for (Entry<String, Double> entry : currentScores.entrySet()) {
+			String ssid = bssidToSsids.get(entry.getKey());
+			if (!members.contains(ssid))
+				continue;
+			if (entry.getValue() > bestScore) {
+				bestBssid = entry.getKey();
+				bestScore = entry.getValue();
+			}
+		}
+
+		if (currentBssid.equals(bestBssid))
+			return;
+		// TODO: switch
 	}
 
 }
