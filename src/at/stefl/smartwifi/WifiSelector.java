@@ -12,19 +12,27 @@ import java.util.Set;
 
 import android.content.Context;
 import android.net.wifi.ScanResult;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.util.Log;
 
 public class WifiSelector {
 
 	private static class ScanData {
-		int level;
 		long timestamp;
+		double level;
 	}
 
+	private WifiManager wifiManager;
 	private Configuration configuration;
 
-	// TODO: use scan count?
 	private double scanCacheTime;
+	private double switchThreshold;
+	private double badScore;
+	private double minScanInterval;
+	private double minSwitchInterval;
+
+	private long lastSwitch = -1;
 
 	private final Deque<Long> lastScans;
 	private final Map<String, Deque<ScanData>> lastBssidScans;
@@ -32,13 +40,18 @@ public class WifiSelector {
 	private final Map<String, Set<String>> ssidToBssids;
 	private final Map<String, String> bssidToSsids;
 
-	private WifiManager wifiManager;
-
 	public WifiSelector() {
 		this.lastScans = new LinkedList<Long>();
 		this.lastBssidScans = new HashMap<String, Deque<ScanData>>();
 		this.ssidToBssids = new HashMap<String, Set<String>>();
 		this.bssidToSsids = new HashMap<String, String>();
+
+		// TODO: rempove
+		this.scanCacheTime = 10;
+		this.switchThreshold = 1.2;
+		this.badScore = 0.2;
+		this.minScanInterval = 20;
+		this.minSwitchInterval = 10;
 	}
 
 	public void init(Context context) {
@@ -48,28 +61,36 @@ public class WifiSelector {
 		this.configuration = Configuration.load(context);
 	}
 
+	private double calculateLevel(int rssi) {
+		return WifiManager.calculateSignalLevel(rssi, 101) / 100d;
+	}
+
+	// TODO: remove suppress
 	private void addScan(ScanResult scan) {
 		long timestamp = System.nanoTime();
-		lastScans.add(timestamp);
+		double level = calculateLevel(scan.level);
+		addScan(scan.BSSID, scan.SSID, level, timestamp);
+	}
 
-		Deque<ScanData> scans = lastBssidScans.get(scan.BSSID);
+	private void addScan(String bssid, String ssid, double level, long timestamp) {
+		Deque<ScanData> scans = lastBssidScans.get(bssid);
 		if (scans == null) {
 			scans = new LinkedList<ScanData>();
-			lastBssidScans.put(scan.BSSID, scans);
+			lastBssidScans.put(bssid, scans);
 		}
 
 		ScanData scanData = new ScanData();
 		scanData.timestamp = timestamp;
-		scanData.level = scan.level;
+		scanData.level = level;
 		scans.add(scanData);
 
-		Set<String> bssids = ssidToBssids.get(scan.SSID);
+		Set<String> bssids = ssidToBssids.get(ssid);
 		if (bssids == null) {
 			bssids = new HashSet<String>();
-			ssidToBssids.put(scan.SSID, bssids);
+			ssidToBssids.put(ssid, bssids);
 		}
-		bssids.add(scan.BSSID);
-		bssidToSsids.put(scan.BSSID, scan.SSID);
+		bssids.add(bssid);
+		bssidToSsids.put(bssid, ssid);
 	}
 
 	private void filterScans() {
@@ -103,57 +124,141 @@ public class WifiSelector {
 		}
 	}
 
-	// TODO: dont calculate all
-	private Map<String, Double> getCurrentScores() {
-		Map<String, Double> result = new HashMap<String, Double>();
+	private double timeWeight(double time) {
+		if (time < 0)
+			return 1;
+		if (time > scanCacheTime)
+			return 0;
+		return 1 - time / scanCacheTime;
+	}
 
-		for (Entry<String, Deque<ScanData>> entry : lastBssidScans.entrySet()) {
-			double score = 0;
+	private double calculateScore(String bssid) {
+		Deque<ScanData> scanData = lastBssidScans.get(bssid);
+		if (scanData == null)
+			return 0;
+		long timestamp = System.nanoTime();
+		double numerator = 0;
+		double denominator = 0;
 
-			for (ScanData scan : entry.getValue()) {
-				double level = WifiManager
-						.calculateSignalLevel(scan.level, 101) / 100d;
-				score += level;
-			}
-
-			score /= lastScans.size();
-			result.put(entry.getKey(), score);
+		for (ScanData scan : scanData) {
+			double time = (timestamp - scan.timestamp) / 1000000000d;
+			double weight = timeWeight(time);
+			numerator += scan.level;
+			denominator += weight;
 		}
 
-		return result;
+		if (denominator == 0)
+			return 0;
+		return numerator / denominator;
 	}
 
 	public void reportScan(List<ScanResult> scans) {
+		Log.d(Constants.TAG, "scan reported");
+
+		long timestamp = System.nanoTime();
+		lastScans.add(timestamp);
+
 		for (ScanResult scan : scans) {
 			addScan(scan);
 		}
 
 		filterScans();
+
+		// TODO: remove
+		select();
 	}
 
-	public void select() {
-		String currentSsid = wifiManager.getConnectionInfo().getSSID();
-		String currentBssid = wifiManager.getConnectionInfo().getBSSID();
+	private boolean decideScan(double score) {
+		if (score > badScore)
+			return false;
+		if (lastScans.isEmpty())
+			return true;
+
+		long timestamp = System.nanoTime();
+		double time = (timestamp - lastScans.getLast()) / 1000000000d;
+		if (time < minScanInterval)
+			return false;
+
+		return true;
+	}
+
+	public void reportRssi(int rssi) {
+		Log.d(Constants.TAG, "rssi reported");
+
+		WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+		if (wifiInfo == null)
+			return;
+
+		String bssid = wifiInfo.getBSSID();
+		String ssid = Util.stringToSsid(wifiInfo.getSSID());
+		double level = calculateLevel(rssi);
+		long timestamp = System.nanoTime();
+
+		addScan(bssid, ssid, level, timestamp);
+
+		double score = calculateScore(bssid);
+		if (decideScan(score)) {
+			Log.d(Constants.TAG, "start scan");
+			wifiManager.startScan();
+		}
+	}
+
+	private boolean decideSwitch(double current, double other) {
+		if (lastSwitch > 0) {
+			long timestamp = System.nanoTime();
+			double time = (timestamp - lastSwitch) / 1000000000d;
+			if (time < minSwitchInterval)
+				return false;
+		}
+
+		double quotient = other / current;
+		return quotient >= switchThreshold;
+	}
+
+	private void select() {
+		WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+		if (wifiInfo == null)
+			return;
+		String currentSsid = Util.stringToSsid(wifiInfo.getSSID());
+		String currentBssid = wifiInfo.getBSSID();
 		Set<String> members = configuration.getMembers(currentSsid);
 		if (members == null)
 			return;
-		Map<String, Double> currentScores = getCurrentScores();
 
+		String bestSsid = null;
 		String bestBssid = null;
 		double bestScore = 0;
-		for (Entry<String, Double> entry : currentScores.entrySet()) {
-			String ssid = bssidToSsids.get(entry.getKey());
-			if (!members.contains(ssid))
+		double currentScore = 0;
+		for (String member : members) {
+			Set<String> bssids = ssidToBssids.get(member);
+			if (bssids == null)
 				continue;
-			if (entry.getValue() > bestScore) {
-				bestBssid = entry.getKey();
-				bestScore = entry.getValue();
+			for (String bssid : bssids) {
+				double score = calculateScore(bssid);
+
+				if (score > bestScore) {
+					bestSsid = member;
+					bestBssid = bssid;
+					bestScore = score;
+				}
+
+				if (bssid.equals(currentBssid)) {
+					currentScore = score;
+				}
 			}
 		}
 
-		if (currentBssid.equals(bestBssid))
+		Log.d(Constants.TAG, "best network: " + bestSsid + ", " + bestBssid);
+		Log.d(Constants.TAG, "current network: " + currentBssid);
+		if ((bestBssid == null) || (bestBssid.equals(currentBssid)))
 			return;
-		// TODO: switch
+
+		if (!decideSwitch(currentScore, bestScore))
+			return;
+
+		Log.d(Constants.TAG, "switch");
+		Util.connectSsid(bestSsid, wifiManager);
+		lastSwitch = System.nanoTime();
 	}
 
 }

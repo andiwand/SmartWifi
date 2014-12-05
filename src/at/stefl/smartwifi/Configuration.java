@@ -14,7 +14,11 @@ public class Configuration {
 
 	private static final String PREFERENCES_NAME = "SmartWifi";
 
-	private static String groupString(Set<String> group) {
+	private static String[] stringToGroup(String group) {
+		return group.split(",");
+	}
+
+	private static String groupToString(Set<String> group) {
 		StringBuilder builder = new StringBuilder();
 
 		Iterator<String> i = group.iterator();
@@ -32,10 +36,11 @@ public class Configuration {
 
 		SharedPreferences prefs = context.getSharedPreferences(
 				PREFERENCES_NAME, Context.MODE_PRIVATE);
-		Set<String> groups = prefs.getStringSet("groups", null);
+		Set<String> groups = prefs
+				.getStringSet("groups", new HashSet<String>());
 
 		for (String group : groups) {
-			String[] members = group.split(",");
+			String[] members = stringToGroup(group);
 			for (int i = 0; i < members.length; i++) {
 				configuration.group(members[i], members[0]);
 			}
@@ -50,6 +55,9 @@ public class Configuration {
 	public Configuration() {
 		this.ssidToGroup = new HashMap<String, Set<String>>();
 		this.groups = new HashSet<Set<String>>();
+
+		// TODO: remove me
+		group("Stefl", "Stefl");
 	}
 
 	public boolean hasGroup(String ssid) {
@@ -70,9 +78,7 @@ public class Configuration {
 		Set<String> result = ssidToGroup.get(ssid);
 		if (result == null)
 			return null;
-		result = new HashSet<String>(result);
-		result.remove(ssid);
-		return result;
+		return Collections.unmodifiableSet(result);
 	}
 
 	public void group(String ssid, String groupSsid) {
@@ -82,6 +88,7 @@ public class Configuration {
 		if (group == null) {
 			group = new HashSet<String>();
 			group.add(groupSsid);
+			ssidToGroup.put(ssid, group);
 		}
 		group.add(ssid);
 	}
@@ -103,10 +110,11 @@ public class Configuration {
 				PREFERENCES_NAME, Context.MODE_PRIVATE).edit();
 		Set<String> groups = new HashSet<String>();
 		for (Set<String> group : this.groups) {
-			String groupString = groupString(group);
+			String groupString = groupToString(group);
 			groups.add(groupString);
 		}
 		editor.putStringSet("groups", groups);
 		editor.commit();
 	}
+
 }

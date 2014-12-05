@@ -48,7 +48,7 @@ public class MainActivity extends Activity {
 				.getConfiguredNetworks();
 
 		for (WifiConfiguration configuration : configurations) {
-			String ssid = WifiConfigurationUtil.getSsid(configuration);
+			String ssid = Util.stringToSsid(configuration.SSID);
 			networks.add(ssid);
 		}
 		Collections.sort(networks);
