@@ -47,11 +47,11 @@ public class ScanService extends Service {
 				wifiSelector.reportScan(wifiManager.getScanResults());
 
 				// TODO: remove
-				// handler.postDelayed(new Runnable() {
-				// public void run() {
-				// wifiManager.startScan();
-				// }
-				// }, 1000);
+				handler.postDelayed(new Runnable() {
+					public void run() {
+						wifiManager.startScan();
+					}
+				}, 1000);
 			}
 		}, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
 
@@ -67,7 +67,7 @@ public class ScanService extends Service {
 		}, new IntentFilter(WifiManager.RSSI_CHANGED_ACTION));
 
 		// TODO: remove
-		// wifiManager.startScan();
+		wifiManager.startScan();
 	}
 
 	@Override

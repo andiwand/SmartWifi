@@ -18,6 +18,14 @@ import android.util.Log;
 
 public class WifiSelector {
 
+	private static double calculateLevel(int rssi) {
+		return WifiManager.calculateSignalLevel(rssi, 101) / 100d;
+	}
+
+	private static double getTime(long t1, long t2) {
+		return (t2 - t1) / 1000000000d;
+	}
+
 	private static class ScanData {
 		long timestamp;
 		double level;
@@ -46,10 +54,6 @@ public class WifiSelector {
 				.getSystemService(Context.WIFI_SERVICE);
 
 		this.configuration = Configuration.load(context);
-	}
-
-	private double calculateLevel(int rssi) {
-		return WifiManager.calculateSignalLevel(rssi, 101) / 100d;
 	}
 
 	// TODO: remove suppress
@@ -85,7 +89,7 @@ public class WifiSelector {
 
 		Iterator<Long> i = lastScans.iterator();
 		while (i.hasNext()) {
-			double time = (timestamp - i.next()) / 1000000000d;
+			double time = getTime(i.next(), timestamp);
 			if (time <= configuration.getScanCacheTime())
 				break;
 			i.remove();
@@ -100,7 +104,7 @@ public class WifiSelector {
 			Iterator<ScanData> k = scans.iterator();
 			while (k.hasNext()) {
 				ScanData scan = k.next();
-				double time = (timestamp - scan.timestamp) / 1000000000d;
+				double time = getTime(scan.timestamp, timestamp);
 				if (time <= configuration.getScanCacheTime())
 					break;
 				k.remove();
@@ -128,9 +132,9 @@ public class WifiSelector {
 		double denominator = 0;
 
 		for (ScanData scan : scanData) {
-			double time = (timestamp - scan.timestamp) / 1000000000d;
+			double time = getTime(scan.timestamp, timestamp);
 			double weight = timeWeight(time);
-			numerator += scan.level;
+			numerator += scan.level * weight;
 			denominator += weight;
 		}
 
@@ -162,7 +166,7 @@ public class WifiSelector {
 			return true;
 
 		long timestamp = System.nanoTime();
-		double time = (timestamp - lastScans.getLast()) / 1000000000d;
+		double time = getTime(lastScans.getLast(), timestamp);
 		if (time < configuration.getMinScanInterval())
 			return false;
 
@@ -193,7 +197,7 @@ public class WifiSelector {
 	private boolean decideSwitch(double current, double other) {
 		if (lastSwitch > 0) {
 			long timestamp = System.nanoTime();
-			double time = (timestamp - lastSwitch) / 1000000000d;
+			double time = getTime(lastSwitch, timestamp);
 			if (time < configuration.getSwitchThreshold())
 				return false;
 		}
@@ -216,15 +220,15 @@ public class WifiSelector {
 		String bestBssid = null;
 		double bestScore = 0;
 		double currentScore = 0;
-		for (String member : members) {
-			Set<String> bssids = ssidToBssids.get(member);
+		for (String ssid : members) {
+			Set<String> bssids = ssidToBssids.get(ssid);
 			if (bssids == null)
 				continue;
 			for (String bssid : bssids) {
 				double score = calculateScore(bssid);
 
 				if (score > bestScore) {
-					bestSsid = member;
+					bestSsid = ssid;
 					bestBssid = bssid;
 					bestScore = score;
 				}
