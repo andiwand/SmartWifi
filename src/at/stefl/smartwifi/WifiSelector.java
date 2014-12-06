@@ -26,12 +26,6 @@ public class WifiSelector {
 	private WifiManager wifiManager;
 	private Configuration configuration;
 
-	private double scanCacheTime;
-	private double switchThreshold;
-	private double badScore;
-	private double minScanInterval;
-	private double minSwitchInterval;
-
 	private long lastSwitch = -1;
 
 	private final Deque<Long> lastScans;
@@ -45,13 +39,6 @@ public class WifiSelector {
 		this.lastBssidScans = new HashMap<String, Deque<ScanData>>();
 		this.ssidToBssids = new HashMap<String, Set<String>>();
 		this.bssidToSsids = new HashMap<String, String>();
-
-		// TODO: rempove
-		this.scanCacheTime = 10;
-		this.switchThreshold = 1.2;
-		this.badScore = 0.2;
-		this.minScanInterval = 20;
-		this.minSwitchInterval = 10;
 	}
 
 	public void init(Context context) {
@@ -99,7 +86,7 @@ public class WifiSelector {
 		Iterator<Long> i = lastScans.iterator();
 		while (i.hasNext()) {
 			double time = (timestamp - i.next()) / 1000000000d;
-			if (time <= scanCacheTime)
+			if (time <= configuration.getScanCacheTime())
 				break;
 			i.remove();
 		}
@@ -114,7 +101,7 @@ public class WifiSelector {
 			while (k.hasNext()) {
 				ScanData scan = k.next();
 				double time = (timestamp - scan.timestamp) / 1000000000d;
-				if (time <= scanCacheTime)
+				if (time <= configuration.getScanCacheTime())
 					break;
 				k.remove();
 			}
@@ -127,9 +114,9 @@ public class WifiSelector {
 	private double timeWeight(double time) {
 		if (time < 0)
 			return 1;
-		if (time > scanCacheTime)
+		if (time > configuration.getScanCacheTime())
 			return 0;
-		return 1 - time / scanCacheTime;
+		return 1 - time / configuration.getScanCacheTime();
 	}
 
 	private double calculateScore(String bssid) {
@@ -169,14 +156,14 @@ public class WifiSelector {
 	}
 
 	private boolean decideScan(double score) {
-		if (score > badScore)
+		if (score > configuration.getBadScore())
 			return false;
 		if (lastScans.isEmpty())
 			return true;
 
 		long timestamp = System.nanoTime();
 		double time = (timestamp - lastScans.getLast()) / 1000000000d;
-		if (time < minScanInterval)
+		if (time < configuration.getMinScanInterval())
 			return false;
 
 		return true;
@@ -207,12 +194,12 @@ public class WifiSelector {
 		if (lastSwitch > 0) {
 			long timestamp = System.nanoTime();
 			double time = (timestamp - lastSwitch) / 1000000000d;
-			if (time < minSwitchInterval)
+			if (time < configuration.getSwitchThreshold())
 				return false;
 		}
 
 		double quotient = other / current;
-		return quotient >= switchThreshold;
+		return quotient >= configuration.getSwitchThreshold();
 	}
 
 	private void select() {
